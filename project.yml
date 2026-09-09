@@ -12,18 +12,30 @@ settings:
     CODE_SIGN_STYLE: Manual
     CODE_SIGN_IDENTITY: "Apple Development"
     DEVELOPMENT_TEAM: ZH6TQH466Q
+    PRODUCT_BUNDLE_IDENTIFIER: com.voicescribe.app
     ENABLE_HARDENED_RUNTIME: YES
     GENERATE_INFOPLIST_FILE: NO
     CURRENT_PROJECT_VERSION: 1
     MARKETING_VERSION: "0.1.0"
 
+packages:
+  CoreModels:
+    path: Packages/CoreModels
+  AudioKit:
+    path: Packages/AudioKit
+
 targets:
   VoiceScribe:
     type: application
     platform: macOS
+    dependencies:
+      - package: CoreModels
+      - package: AudioKit
     sources:
       - path: App
-      - path: Core
+      - path: Features
+      - path: MenuBar
+      - path: Support
     info:
       path: App/Info.plist
       properties:

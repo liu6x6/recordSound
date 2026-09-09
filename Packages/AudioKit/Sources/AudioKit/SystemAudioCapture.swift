@@ -3,15 +3,15 @@ import ScreenCaptureKit
 import CoreMedia
 
 /// 系统声音采集：SCStream(capturesAudio: true) → 写 CAF 文件 + 电平回调
-/// Spike 阶段：录主显示器对应音频，排除本进程声音，忽略视频帧
-final class SystemAudioCapture: NSObject, @unchecked Sendable {
+/// 录主显示器对应音频，排除本进程声音（防自激），视频通道最小化
+public final class SystemAudioCapture: NSObject, @unchecked Sendable {
 
-    enum CaptureError: LocalizedError {
+    public enum CaptureError: LocalizedError {
         case permissionDenied
         case noDisplay
         case streamFailed(String)
 
-        var errorDescription: String? {
+        public var errorDescription: String? {
             switch self {
             case .permissionDenied: return "屏幕录制权限未授权（系统声音捕获需要此权限）"
             case .noDisplay: return "未找到可用显示器"
@@ -22,16 +22,20 @@ final class SystemAudioCapture: NSObject, @unchecked Sendable {
 
     private var stream: SCStream?
     private var file: AVAudioFile?
-    private let fileURLLock = NSLock()
+    private var pendingFileURL: URL?
+    private let lock = NSLock()
     private let audioQueue = DispatchQueue(label: "com.voicescribe.systemaudio", qos: .userInitiated)
 
     /// 电平回调（0.0 ~ 1.0），在 audioQueue 调用
-    var onLevel: ((Float) -> Void)?
+    public var onLevel: (@Sendable (Float) -> Void)?
 
-    private(set) var isRecording = false
+    public private(set) var isRecording = false
+    public private(set) var isPaused = false
 
-    /// 触发/检测屏幕录制权限（首次调用会弹 TCC 授权框）
-    static func checkPermission() async -> Bool {
+    public override init() { super.init() }
+
+    /// 检测屏幕录制权限（首次调用会触发 TCC 授权流程）
+    public static func checkPermission() async -> Bool {
         do {
             _ = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
             return true
@@ -40,7 +44,7 @@ final class SystemAudioCapture: NSObject, @unchecked Sendable {
         }
     }
 
-    func start(fileURL: URL) async throws {
+    public func start(fileURL: URL) async throws {
         let content: SCShareableContent
         do {
             content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
@@ -56,7 +60,7 @@ final class SystemAudioCapture: NSObject, @unchecked Sendable {
         config.excludesCurrentProcessAudio = true
         config.sampleRate = 48_000
         config.channelCount = 2
-        // 视频部分最小化（SCStream 无法完全关闭视频通道）
+        // SCStream 无法完全关闭视频通道，最小化开销
         config.width = 2
         config.height = 2
         config.minimumFrameInterval = CMTime(value: 1, timescale: 1)
@@ -65,7 +69,7 @@ final class SystemAudioCapture: NSObject, @unchecked Sendable {
         let stream = SCStream(filter: filter, configuration: config, delegate: self)
         try stream.addStreamOutput(self, type: .audio, sampleHandlerQueue: audioQueue)
 
-        fileURLLock.withLock {
+        lock.withLock {
             file = nil
             pendingFileURL = fileURL
         }
@@ -73,25 +77,39 @@ final class SystemAudioCapture: NSObject, @unchecked Sendable {
         try await stream.startCapture()
         self.stream = stream
         isRecording = true
+        isPaused = false
     }
 
-    private var pendingFileURL: URL?
+    public func pause() {
+        guard isRecording, !isPaused else { return }
+        isPaused = true   // 保持 SCStream 运行，暂停期间丢弃音频帧（不写盘）
+    }
 
-    func stop() async {
+    public func resume() {
+        guard isRecording, isPaused else { return }
+        isPaused = false
+    }
+
+    public func stop() async {
         guard isRecording, let stream else { return }
         isRecording = false
+        isPaused = false
         do { try await stream.stopCapture() } catch { /* 已停止 */ }
         self.stream = nil
         audioQueue.sync {
-            fileURLLock.withLock {
+            lock.withLock {
                 self.file = nil
+                self.pendingFileURL = nil
             }
         }
     }
 
+    // MARK: - 音频处理
+
     private func handleAudioBuffer(_ sampleBuffer: CMSampleBuffer) {
+        if isPaused { return }   // 暂停期间丢弃
         // 首帧到达时，用实际格式创建文件
-        fileURLLock.withLock {
+        lock.withLock {
             if file == nil, let url = pendingFileURL,
                let formatDescription = sampleBuffer.formatDescription,
                let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDescription) {
@@ -121,31 +139,18 @@ final class SystemAudioCapture: NSObject, @unchecked Sendable {
                                                    bufferListNoCopy: bufferList.unsafePointer,
                                                    deallocator: nil),
                   pcmBuffer.frameLength > 0 else { return }
-            fileURLLock.withLock {
-                do { try self.file?.write(from: pcmBuffer) } catch { /* spike: 忽略 */ }
+            self.lock.withLock {
+                do { try self.file?.write(from: pcmBuffer) } catch { /* 忽略 */ }
             }
-            onLevel?(Self.rms(pcmBuffer))
+            self.onLevel?(LevelMath.normalized(pcmBuffer))
         }
-    }
-
-    private static func rms(_ buffer: AVAudioPCMBuffer) -> Float {
-        guard let data = buffer.floatChannelData?[0] else { return 0 }
-        let n = Int(buffer.frameLength)
-        guard n > 0 else { return 0 }
-        var sum: Float = 0
-        var count: Int = 0
-        for i in stride(from: 0, to: n, by: 4) { sum += data[i] * data[i]; count += 1 }
-        guard count > 0 else { return 0 }
-        let rms = sqrtf(sum / Float(count))
-        let db = 20 * log10(max(rms, 1e-7))
-        return min(max((db + 40) / 40, 0), 1)
     }
 }
 
 // MARK: - SCStreamDelegate
 
 extension SystemAudioCapture: SCStreamDelegate {
-    func stream(_ stream: SCStream, didStopWithError error: Error) {
+    public func stream(_ stream: SCStream, didStopWithError error: Error) {
         isRecording = false
     }
 }
@@ -153,7 +158,7 @@ extension SystemAudioCapture: SCStreamDelegate {
 // MARK: - SCStreamOutput
 
 extension SystemAudioCapture: SCStreamOutput {
-    func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
+    public func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
         guard type == .audio, sampleBuffer.isValid else { return }
         handleAudioBuffer(sampleBuffer)
     }
