@@ -29,6 +29,9 @@ public final class SystemAudioCapture: NSObject, @unchecked Sendable {
     /// 电平回调（0.0 ~ 1.0），在 audioQueue 调用
     public var onLevel: (@Sendable (Float) -> Void)?
 
+    /// PCM buffer 回调（已拷贝，可安全交给语音识别），在 audioQueue 调用
+    public var onBuffer: (@Sendable (AVAudioPCMBuffer) -> Void)?
+
     public private(set) var isRecording = false
     public private(set) var isPaused = false
 
@@ -107,7 +110,7 @@ public final class SystemAudioCapture: NSObject, @unchecked Sendable {
     // MARK: - 音频处理
 
     private func handleAudioBuffer(_ sampleBuffer: CMSampleBuffer) {
-        if isPaused { return }   // 暂停期间丢弃
+        if isPaused { return }   // 暂停期间丢弃（含转写，与写盘一致）
         // 首帧到达时，用实际格式创建文件
         lock.withLock {
             if file == nil, let url = pendingFileURL,
@@ -143,6 +146,9 @@ public final class SystemAudioCapture: NSObject, @unchecked Sendable {
                 do { try self.file?.write(from: pcmBuffer) } catch { /* 忽略 */ }
             }
             self.onLevel?(LevelMath.normalized(pcmBuffer))
+            if self.onBuffer != nil, let copied = BufferCopy.copy(pcmBuffer) {
+                self.onBuffer?(copied)
+            }
         }
     }
 }

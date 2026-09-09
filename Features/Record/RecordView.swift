@@ -33,11 +33,30 @@ struct RecordView: View {
                         level: vm.systemLevel,
                         enabled: perms.screenGranted && vm.phase == .idle
                     )
+                    Divider()
+                    Toggle(isOn: Binding(
+                        get: { vm.liveTranscriptionEnabled },
+                        set: { vm.liveTranscriptionEnabled = $0 }
+                    )) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Label("实时转写（端侧语音识别）", systemImage: "captions.bubble")
+                                .font(.body.weight(.medium))
+                            Text("录音时同步生成文字，数据不出设备")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .disabled(!perms.speechGranted || vm.phase != .idle)
                 }
                 .padding(6)
             }
 
             Spacer()
+
+            // 实时字幕
+            if vm.phase != .idle && vm.liveTranscriptionEnabled {
+                liveCaptionBox(vm: vm)
+            }
 
             // 控制区
             VStack(spacing: 8) {
@@ -143,6 +162,68 @@ struct RecordView: View {
                 actionTitle: "打开系统设置"
             ) {
                 perms.openScreenCaptureSettings()
+            }
+        }
+        if !perms.speechGranted {
+            PermissionBanner(
+                icon: "captions.bubble.badge.xmark",
+                text: "语音识别权限未授权，实时转写不可用",
+                actionTitle: "请求授权"
+            ) {
+                Task { await perms.requestSpeech() }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func liveCaptionBox(vm: RecordViewModel) -> some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 6) {
+                if vm.captureSystem || !vm.systemCaption.isEmpty {
+                    captionLine(label: "对方", color: .purple,
+                                partial: vm.systemCaption,
+                                lastCommitted: vm.pendingSegments.last(where: { $0.channel == .system })?.text)
+                }
+                if vm.captureMic || !vm.micCaption.isEmpty {
+                    captionLine(label: "我", color: .blue,
+                                partial: vm.micCaption,
+                                lastCommitted: vm.pendingSegments.last(where: { $0.channel == .mic })?.text)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .animation(.default, value: vm.micCaption)
+            .animation(.default, value: vm.systemCaption)
+        } label: {
+            Label("实时转写", systemImage: "captions.bubble.fill")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder
+    private func captionLine(label: String, color: Color, partial: String, lastCommitted: String?) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(label)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(color)
+                .frame(width: 32, alignment: .leading)
+            VStack(alignment: .leading, spacing: 2) {
+                if let lastCommitted {
+                    Text(lastCommitted)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.head)
+                }
+                if !partial.isEmpty {
+                    Text(partial)
+                        .font(.callout)
+                        .lineLimit(2)
+                } else if lastCommitted == nil {
+                    Text("等待语音…")
+                        .font(.callout)
+                        .foregroundStyle(.tertiary)
+                }
             }
         }
     }

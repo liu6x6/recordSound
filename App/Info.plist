@@ -26,5 +26,7 @@
 	<string>© 2026 VoiceScribe</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>VoiceScribe 需要访问麦克风以录制您的声音。</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>VoiceScribe 使用设备端语音识别将录音实时转写为文字，数据不会离开您的设备。</string>
 </dict>
 </plist>

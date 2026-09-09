@@ -1,4 +1,5 @@
 import Foundation
+import AVFoundation
 
 /// 一次录音会话：编排麦克风轨 + 系统声音轨，支持暂停/恢复，维护统一时间轴
 public final class RecordingSession: @unchecked Sendable {
@@ -34,6 +35,16 @@ public final class RecordingSession: @unchecked Sendable {
     public var onSystemLevel: (@Sendable (Float) -> Void)? {
         get { system.onLevel }
         set { system.onLevel = newValue }
+    }
+
+    /// PCM buffer 回调（已拷贝），供实时转写嗂入
+    public var onMicBuffer: (@Sendable (AVAudioPCMBuffer) -> Void)? {
+        get { mic.onBuffer }
+        set { mic.onBuffer = newValue }
+    }
+    public var onSystemBuffer: (@Sendable (AVAudioPCMBuffer) -> Void)? {
+        get { system.onBuffer }
+        set { system.onBuffer = newValue }
     }
 
     private let mic = MicCapture()

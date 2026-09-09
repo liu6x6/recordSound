@@ -64,6 +64,8 @@ struct PermissionStatusRow: View {
                 .foregroundStyle(perms.micGranted ? .green : .red)
             Label("屏幕录制", systemImage: perms.screenGranted ? "checkmark.circle.fill" : "xmark.circle.fill")
                 .foregroundStyle(perms.screenGranted ? .green : .red)
+            Label("语音识别", systemImage: perms.speechGranted ? "checkmark.circle.fill" : "xmark.circle.fill")
+                .foregroundStyle(perms.speechGranted ? .green : .red)
             Button("刷新") { Task { await perms.refresh() } }
         }
         .font(.callout)

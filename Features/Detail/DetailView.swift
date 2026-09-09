@@ -33,7 +33,7 @@ struct DetailView: View {
             case .summary:
                 summaryPlaceholder
             case .transcript:
-                transcriptPlaceholder
+                transcriptTab
             case .audio:
                 audioTab
             }
@@ -157,12 +157,48 @@ struct DetailView: View {
         }
     }
 
-    private var transcriptPlaceholder: some View {
-        ContentUnavailableView {
-            Label("转写文稿", systemImage: "text.quote")
-        } description: {
-            Text("M2 里程碑：本地语音识别将生成带时间戳的逐句文稿")
+    private var transcriptTab: some View {
+        Group {
+            if recording.segments.isEmpty {
+                ContentUnavailableView {
+                    Label("暂无转写文稿", systemImage: "text.quote")
+                } description: {
+                    Text(recording.status == .recording
+                         ? "录音中…实时转写将在结束后显示在这里"
+                         : "这场录音未开启实时转写（M3 将支持录音后离线转写）")
+                }
+            } else {
+                ScrollViewReader { proxy in
+                    List {
+                        ForEach(sortedSegments) { segment in
+                            TranscriptBubble(
+                                segment: segment,
+                                isActive: playback.position >= segment.start && playback.position < segment.end
+                            ) {
+                                selectedTab = .audio
+                                playback.seek(to: segment.start)
+                            }
+                            .id(segment.id)
+                        }
+                    }
+                    .listStyle(.plain)
+                    .onChange(of: playback.position) { _, newPosition in
+                        // 播放时自动滚动到当前片段
+                        guard playback.isPlaying,
+                              let current = sortedSegments.first(where: {
+                                  newPosition >= $0.start && newPosition < $0.end
+                              }) else { return }
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            proxy.scrollTo(current.id, anchor: .center)
+                        }
+                    }
+                }
+            }
         }
+    }
+
+    private var sortedSegments: [TranscriptSegment] {
+        recording.segments.sorted { $0.start < $1.start }
     }
 
     private func durationString(_ t: TimeInterval) -> String {

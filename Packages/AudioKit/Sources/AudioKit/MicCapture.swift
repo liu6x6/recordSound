@@ -22,6 +22,9 @@ public final class MicCapture: @unchecked Sendable {
     /// 电平回调（0.0 ~ 1.0），在音频线程调用
     public var onLevel: (@Sendable (Float) -> Void)?
 
+    /// PCM buffer 回调（已拷贝，可安全交给语音识别），在音频线程调用
+    public var onBuffer: (@Sendable (AVAudioPCMBuffer) -> Void)?
+
     public private(set) var isRecording = false
     public private(set) var isPaused = false
 
@@ -66,6 +69,9 @@ public final class MicCapture: @unchecked Sendable {
                 do { try self.file?.write(from: buffer) } catch { /* 忽略写盘错误 */ }
             }
             self.onLevel?(LevelMath.normalized(buffer))
+            if self.onBuffer != nil, let copied = BufferCopy.copy(buffer) {
+                self.onBuffer?(copied)
+            }
         }
 
         engine.prepare()

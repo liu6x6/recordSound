@@ -23,6 +23,8 @@ packages:
     path: Packages/CoreModels
   AudioKit:
     path: Packages/AudioKit
+  TranscriptionKit:
+    path: Packages/TranscriptionKit
 
 targets:
   VoiceScribe:
@@ -31,6 +33,7 @@ targets:
     dependencies:
       - package: CoreModels
       - package: AudioKit
+      - package: TranscriptionKit
     sources:
       - path: App
       - path: Features
@@ -47,6 +50,7 @@ targets:
         CFBundlePackageType: APPL
         LSMinimumSystemVersion: "15.0"
         NSMicrophoneUsageDescription: "VoiceScribe 需要访问麦克风以录制您的声音。"
+        NSSpeechRecognitionUsageDescription: "VoiceScribe 使用设备端语音识别将录音实时转写为文字，数据不会离开您的设备。"
         NSHumanReadableCopyright: "© 2026 VoiceScribe"
     entitlements:
       path: App/VoiceScribe.entitlements
