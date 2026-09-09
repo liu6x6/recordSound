@@ -7,7 +7,15 @@ let package = Package(
     products: [
         .library(name: "TranscriptionKit", targets: ["TranscriptionKit"])
     ],
+    dependencies: [
+        .package(url: "https://github.com/argmaxinc/argmax-oss-swift.git", from: "1.1.0")
+    ],
     targets: [
-        .target(name: "TranscriptionKit")
+        .target(
+            name: "TranscriptionKit",
+            dependencies: [
+                .product(name: "WhisperKit", package: "argmax-oss-swift")
+            ]
+        )
     ]
 )

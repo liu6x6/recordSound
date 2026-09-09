@@ -121,7 +121,8 @@ final class RecordViewModel {
     }
 
     private func makeProvider(channel: Channel, session: RecordingSession) -> SpeechLiveProvider? {
-        let provider = SpeechLiveProvider(localeIdentifier: "zh-CN")
+        let locale = WhisperService.shared.liveASRLocale
+        let provider = SpeechLiveProvider(localeIdentifier: locale)
         do {
             try provider.start()
         } catch {
@@ -204,6 +205,11 @@ final class RecordViewModel {
         if recording.status == .failed {
             statusMessage = "录音失败：没有捕获到任何音频"
         } else {
+            // 自动精转（设置中开启时）
+            let whisper = WhisperService.shared
+            if whisper.autoRefine && whisper.isModelDownloaded(whisper.defaultModel) {
+                whisper.refine(recordingID: recording.id, context: context)
+            }
             onFinished?(recording)
         }
     }

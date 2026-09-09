@@ -9,6 +9,7 @@ struct DetailView: View {
     let recording: Recording
     @State private var playback = PlaybackController()
     @State private var selectedTab: Tab = .audio
+    @State private var whisper = WhisperService.shared
 
     enum Tab: String, CaseIterable {
         case summary = "总结"
@@ -158,7 +159,9 @@ struct DetailView: View {
     }
 
     private var transcriptTab: some View {
-        Group {
+        VStack(spacing: 0) {
+            refineControlBar
+            Divider()
             if recording.segments.isEmpty {
                 ContentUnavailableView {
                     Label("暂无转写文稿", systemImage: "text.quote")
@@ -195,6 +198,49 @@ struct DetailView: View {
                 }
             }
         }
+    }
+
+    // MARK: 精转控制条
+
+    @ViewBuilder
+    private var refineControlBar: some View {
+        HStack(spacing: 10) {
+            if recording.finalEngineRaw == ASREngine.whisper.rawValue {
+                Label("Whisper 终稿", systemImage: "checkmark.seal.fill")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.green)
+            } else if recording.liveEngineRaw == ASREngine.appleSpeech.rawValue {
+                Label("实时转写稿（可用 Whisper 精转提升准确率）", systemImage: "bolt.fill")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            if let state = whisper.refineStates[recording.id] {
+                ProgressView()
+                    .controlSize(.small)
+                Text(state.statusText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Button("取消") {
+                    whisper.cancelRefine(recording.id)
+                }
+                .controlSize(.small)
+            } else if recording.status != .recording,
+                      recording.hasMicTrack || recording.hasSystemTrack {
+                Button {
+                    whisper.refine(recordingID: recording.id, context: modelContext)
+                } label: {
+                    Label("用 Whisper 精转", systemImage: "sparkles")
+                }
+                .controlSize(.small)
+                .help("本地模型重新转写，支持中英混说；首次使用需在设置中下载模型")
+            }
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
     }
 
     private var sortedSegments: [TranscriptSegment] {

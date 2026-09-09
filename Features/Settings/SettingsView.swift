@@ -7,10 +7,12 @@ struct SettingsView: View {
         TabView {
             generalTab
                 .tabItem { Label("通用", systemImage: "gearshape") }
+            transcriptionTab
+                .tabItem { Label("转写", systemImage: "captions.bubble") }
             aboutTab
                 .tabItem { Label("关于", systemImage: "info.circle") }
         }
-        .frame(width: 480, height: 260)
+        .frame(width: 520, height: 380)
         .padding()
     }
 
@@ -33,6 +35,96 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    // MARK: 转写设置
+
+    @State private var whisper = WhisperService.shared
+
+    private var transcriptionTab: some View {
+        Form {
+            Section("实时转写（录音中字幕，Apple Speech 端侧）") {
+                Picker("识别语言", selection: Binding(
+                    get: { whisper.liveASRLocale },
+                    set: { whisper.liveASRLocale = $0 }
+                )) {
+                    Text("中文").tag("zh-CN")
+                    Text("English").tag("en-US")
+                }
+                Text("实时字幕为单语言识别；中英混说建议录音后用 Whisper 精转（语言选“自动”）获得终稿。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Whisper 精转（终稿，支持中英混说）") {
+                Picker("默认模型", selection: Binding(
+                    get: { whisper.defaultModel },
+                    set: { whisper.defaultModel = $0 }
+                )) {
+                    ForEach(WhisperModel.allCases) { model in
+                        Text(model.displayName).tag(model)
+                    }
+                }
+                Picker("精转语言", selection: Binding(
+                    get: { whisper.refineLanguage },
+                    set: { whisper.refineLanguage = $0 }
+                )) {
+                    Text("自动检测（推荐，中英混说）").tag("auto")
+                    Text("中文").tag("zh")
+                    Text("English").tag("en")
+                }
+                Toggle("录音结束后自动精转", isOn: Binding(
+                    get: { whisper.autoRefine },
+                    set: { whisper.autoRefine = $0 }
+                ))
+            }
+
+            Section("模型管理") {
+                ForEach(WhisperModel.allCases) { model in
+                    modelRow(model)
+                }
+                Text("模型首次下载需要网络（HuggingFace），之后完全离线使用。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    @ViewBuilder
+    private func modelRow(_ model: WhisperModel) -> some View {
+        let downloaded = whisper.isModelDownloaded(model)
+        let downloadState = whisper.modelDownloads[model.rawValue]
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(model.displayName)
+                Text("约 \(model.approximateSizeMB) MB")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            if let state = downloadState {
+                ProgressView()
+                    .controlSize(.small)
+                Text(state)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            } else if downloaded {
+                Label("已下载", systemImage: "checkmark.circle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.green)
+                Button(role: .destructive) {
+                    whisper.deleteModel(model)
+                } label: {
+                    Image(systemName: "trash")
+                }
+                .buttonStyle(.borderless)
+                .help("删除模型文件")
+            } else {
+                Button("下载") { whisper.downloadModel(model) }
+            }
+        }
     }
 
     private var aboutTab: some View {
