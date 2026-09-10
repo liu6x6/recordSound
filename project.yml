@@ -25,6 +25,8 @@ packages:
     path: Packages/AudioKit
   TranscriptionKit:
     path: Packages/TranscriptionKit
+  SummarizationKit:
+    path: Packages/SummarizationKit
 
 targets:
   VoiceScribe:
@@ -34,6 +36,7 @@ targets:
       - package: CoreModels
       - package: AudioKit
       - package: TranscriptionKit
+      - package: SummarizationKit
     sources:
       - path: App
       - path: Features

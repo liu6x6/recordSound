@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import AudioKit
+import SummarizationKit
 import CoreModels
 
 /// 录音详情页：总结（M4）/ 文稿（M2）/ 音频（M1）
@@ -10,6 +11,8 @@ struct DetailView: View {
     @State private var playback = PlaybackController()
     @State private var selectedTab: Tab = .audio
     @State private var whisper = WhisperService.shared
+    @State private var summarization = SummarizationService.shared
+    @State private var summaryTemplate: SummaryTemplate = SummarizationService.shared.defaultTemplate
 
     enum Tab: String, CaseIterable {
         case summary = "总结"
@@ -32,7 +35,7 @@ struct DetailView: View {
 
             switch selectedTab {
             case .summary:
-                summaryPlaceholder
+                summaryTab
             case .transcript:
                 transcriptTab
             case .audio:
@@ -150,12 +153,87 @@ struct DetailView: View {
 
     // MARK: 占位（M2 / M4）
 
-    private var summaryPlaceholder: some View {
-        ContentUnavailableView {
-            Label("AI 总结", systemImage: "sparkles")
-        } description: {
-            Text("M4 里程碑：录音结束后由本地 Apple Intelligence 模型生成会议纪要")
+    // MARK: 总结 Tab
+
+    @ViewBuilder
+    private var summaryTab: some View {
+        if let state = summarization.states[recording.id] {
+            VStack(spacing: 12) {
+                Spacer()
+                ProgressView()
+                Text(state)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                Button("取消") { summarization.cancel(recording.id) }
+                    .controlSize(.small)
+                Spacer()
+            }
+            .frame(maxWidth: .infinity)
+        } else if let summary = recording.summary {
+            VStack(spacing: 0) {
+                ScrollView {
+                    SummaryMarkdownView(markdown: summary.markdown)
+                        .padding(20)
+                }
+                Divider()
+                HStack(spacing: 12) {
+                    Text("\(templateName(summary.templateKind)) · 本地模型 · \(summary.generatedAt.formatted(date: .abbreviated, time: .shortened))")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Picker("", selection: $summaryTemplate) {
+                        ForEach(SummaryTemplate.allCases) { tpl in
+                            Text(tpl.displayName).tag(tpl)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .frame(width: 120)
+                    Button {
+                        summarization.generate(recordingID: recording.id, template: summaryTemplate, context: modelContext)
+                    } label: {
+                        Label("重新生成", systemImage: "arrow.clockwise")
+                    }
+                    .controlSize(.small)
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 10)
+            }
+        } else if let error = summarization.availabilityError {
+            ContentUnavailableView {
+                Label("本地 AI 总结不可用", systemImage: "exclamationmark.triangle")
+            } description: {
+                Text(error.localizedDescription)
+            }
+        } else if recording.segments.isEmpty {
+            ContentUnavailableView {
+                Label("AI 总结", systemImage: "sparkles")
+            } description: {
+                Text("暂无转写内容：先完成实时转写或 Whisper 精转，再生成总结")
+            }
+        } else {
+            VStack(spacing: 12) {
+                Spacer()
+                Image(systemName: "sparkles")
+                    .font(.system(size: 40))
+                    .foregroundStyle(.secondary)
+                Text("由本地 Apple Intelligence 模型生成\(summarization.defaultTemplate.displayName)，数据不出设备")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                Button {
+                    summarization.generate(recordingID: recording.id, context: modelContext)
+                } label: {
+                    Label("生成总结", systemImage: "sparkles")
+                }
+                .controlSize(.large)
+                .buttonStyle(.borderedProminent)
+                Spacer()
+            }
+            .frame(maxWidth: .infinity)
         }
+    }
+
+    private func templateName(_ kind: String) -> String {
+        SummaryTemplate(rawValue: kind)?.displayName ?? kind
     }
 
     private var transcriptTab: some View {

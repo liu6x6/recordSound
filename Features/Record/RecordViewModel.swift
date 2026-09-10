@@ -209,6 +209,9 @@ final class RecordViewModel {
             let whisper = WhisperService.shared
             if whisper.autoRefine && whisper.isModelDownloaded(whisper.defaultModel) {
                 whisper.refine(recordingID: recording.id, context: context)
+            } else {
+                // 不精转 → 直接自动总结（基于实时转写稿）
+                SummarizationService.shared.autoGenerateIfNeeded(recording: recording, context: context)
             }
             onFinished?(recording)
         }

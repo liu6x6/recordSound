@@ -168,6 +168,9 @@ final class WhisperService {
             setState("")
             refineStates[id] = nil
             notify(title: "精转完成", body: "「\(recording.title)」的 Whisper 终稿已生成")
+
+            // 精转完成 → 自动总结（设置开启时）
+            SummarizationService.shared.autoGenerateIfNeeded(recording: recording, context: context)
         } catch is CancellationError {
             refineStates[id] = nil
             recording.status = recording.segments.isEmpty ? .done : .liveDone

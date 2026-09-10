@@ -1,5 +1,6 @@
 import SwiftUI
 import AudioKit
+import SummarizationKit
 import TranscriptionKit
 
 /// 设置页（M1 最小版：存储位置 + 隐私说明；M2/M3 增加转写引擎与模型管理）
@@ -10,6 +11,8 @@ struct SettingsView: View {
                 .tabItem { Label("通用", systemImage: "gearshape") }
             transcriptionTab
                 .tabItem { Label("转写", systemImage: "captions.bubble") }
+            summarySettingsTab
+                .tabItem { Label("总结", systemImage: "sparkles") }
             aboutTab
                 .tabItem { Label("关于", systemImage: "info.circle") }
         }
@@ -126,6 +129,47 @@ struct SettingsView: View {
                 Button("下载") { whisper.downloadModel(model) }
             }
         }
+    }
+
+    // MARK: 总结设置
+
+    @State private var summarization = SummarizationService.shared
+
+    private var summarySettingsTab: some View {
+        Form {
+            Section("本地 AI 总结（Apple Intelligence）") {
+                HStack {
+                    Text("端侧模型状态")
+                    Spacer()
+                    if let error = summarization.availabilityError {
+                        Label(error.localizedDescription, systemImage: "xmark.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                            .help(error.localizedDescription)
+                    } else {
+                        Label("可用", systemImage: "checkmark.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.green)
+                    }
+                }
+                Picker("默认模板", selection: Binding(
+                    get: { summarization.defaultTemplate },
+                    set: { summarization.defaultTemplate = $0 }
+                )) {
+                    ForEach(SummaryTemplate.allCases) { tpl in
+                        Text(tpl.displayName).tag(tpl)
+                    }
+                }
+                Toggle("转写完成后自动生成总结", isOn: Binding(
+                    get: { summarization.autoSummarize },
+                    set: { summarization.autoSummarize = $0 }
+                ))
+                Text("总结全部由设备端 Apple Intelligence 模型生成，不联网、不上传。长录音会先分段提取要点再汇总。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
     }
 
     private var aboutTab: some View {
