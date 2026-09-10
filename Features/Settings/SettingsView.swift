@@ -1,5 +1,6 @@
 import SwiftUI
 import AudioKit
+import TranscriptionKit
 
 /// 设置页（M1 最小版：存储位置 + 隐私说明；M2/M3 增加转写引擎与模型管理）
 struct SettingsView: View {

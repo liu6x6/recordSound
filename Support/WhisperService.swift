@@ -121,8 +121,10 @@ final class WhisperService {
             if recording.hasMicTrack {
                 let url = RecordingStore.micFileURL(for: id)
                 setState("精转麦克风轨（我）…")
-                let segs = try await provider.transcribe(fileURL: url, model: model, language: language) { state in
-                    Task { @MainActor in setState(state) }
+                let segs = try await provider.transcribe(fileURL: url, model: model, language: language) { [weak self] state in
+                    Task { @MainActor in
+                        self?.refineStates[id] = RefineState(statusText: state)
+                    }
                 }
                 collected += segs.map { (.mic, $0) }
             }
@@ -132,8 +134,10 @@ final class WhisperService {
             if recording.hasSystemTrack {
                 let url = RecordingStore.systemFileURL(for: id)
                 setState("精转系统声音轨（对方）…")
-                let segs = try await provider.transcribe(fileURL: url, model: model, language: language) { state in
-                    Task { @MainActor in setState(state) }
+                let segs = try await provider.transcribe(fileURL: url, model: model, language: language) { [weak self] state in
+                    Task { @MainActor in
+                        self?.refineStates[id] = RefineState(statusText: state)
+                    }
                 }
                 collected += segs.map { (.system, $0) }
             }
