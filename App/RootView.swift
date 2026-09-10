@@ -9,6 +9,7 @@ struct RootView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var selection: SidebarItem? = .record
     @State private var detailRecordingID: UUID?
+    @State private var showOnboarding = !UserDefaults.standard.bool(forKey: "onboarding.done")
     @Query(filter: #Predicate<Recording> { $0.statusRaw == "recording" },
            sort: \Recording.createdAt, order: .reverse)
     private var activeRecordings: [Recording]
@@ -61,6 +62,9 @@ struct RootView: View {
             }
         }
         .frame(minWidth: 720, minHeight: 520)
+        .sheet(isPresented: $showOnboarding) {
+            OnboardingView()
+        }
         .navigationDestination(for: UUID.self) { id in
             if let recording = findRecording(id: id) {
                 DetailView(recording: recording)
@@ -73,6 +77,21 @@ struct RootView: View {
                 selection = nil
                 detailRecordingID = recording.id
             }
+
+            // 全局热键：⌥⌘R 开始/停止录音
+            let hotKey = HotKeyManager.shared
+            hotKey.onHotKey = {
+                let vm = appState.recorder
+                Task {
+                    switch vm.phase {
+                    case .idle:
+                        await vm.start(context: modelContext)
+                    case .recording, .paused:
+                        await vm.stop(context: modelContext)
+                    }
+                }
+            }
+            hotKey.registerIfNeeded()
         }
     }
 

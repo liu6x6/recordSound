@@ -44,6 +44,20 @@ struct DetailView: View {
             Spacer()
         }
         .navigationTitle(recording.title)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    ForEach(ExportService.ExportKind.allCases) { kind in
+                        Button(kind.rawValue) {
+                            Task { await ExportService.export(recording, kind: kind) }
+                        }
+                    }
+                } label: {
+                    Label("导出", systemImage: "square.and.arrow.up")
+                }
+                .help("导出总结/文稿/字幕/混音音频")
+            }
+        }
         .onAppear { playback.load(recording: recording) }
         .onDisappear { playback.stop() }
     }

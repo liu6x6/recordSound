@@ -39,6 +39,13 @@ struct LibraryView: View {
                             renamingRecording = recording
                             renameText = recording.title
                         }
+                        Menu("导出") {
+                            ForEach(ExportService.ExportKind.allCases) { kind in
+                                Button(kind.rawValue) {
+                                    Task { await ExportService.export(recording, kind: kind) }
+                                }
+                            }
+                        }
                         Button("在 Finder 中显示") {
                             NSWorkspace.shared.activateFileViewerSelecting(
                                 [RecordingStore.directory(for: recording.id)]

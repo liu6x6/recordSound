@@ -37,6 +37,10 @@ struct SettingsView: View {
             LabeledContent("权限状态") {
                 PermissionStatusRow()
             }
+            Toggle("全局热键 ⌥⌘R（开始/停止录音）", isOn: Binding(
+                get: { HotKeyManager.shared.isEnabled },
+                set: { HotKeyManager.shared.isEnabled = $0 }
+            ))
         }
         .formStyle(.grouped)
     }
