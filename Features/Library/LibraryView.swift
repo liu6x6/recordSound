@@ -5,6 +5,9 @@ import CoreModels
 
 /// 录音库：列表 + 搜索 + 重命名/删除/导出入口
 struct LibraryView: View {
+    /// 点击录音行 → 由父层路由到详情页
+    let onSelect: (UUID) -> Void
+
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Recording.createdAt, order: .reverse) private var recordings: [Recording]
     @State private var searchText = ""
@@ -31,9 +34,12 @@ struct LibraryView: View {
                 }
             } else {
                 List(filtered) { recording in
-                    NavigationLink(value: recording.id) {
+                    Button {
+                        onSelect(recording.id)
+                    } label: {
                         RecordingRow(recording: recording)
                     }
+                    .buttonStyle(.plain)
                     .contextMenu {
                         Button("重命名…") {
                             renamingRecording = recording

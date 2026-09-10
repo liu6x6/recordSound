@@ -9,6 +9,8 @@ struct RootView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var selection: SidebarItem? = .record
     @State private var detailRecordingID: UUID?
+    /// onFinished 程序化切换 selection 时，抑制 onChange 清空详情
+    @State private var suppressDetailClear = false
     @State private var showOnboarding = !UserDefaults.standard.bool(forKey: "onboarding.done")
     @Query(filter: #Predicate<Recording> { $0.statusRaw == "recording" },
            sort: \Recording.createdAt, order: .reverse)
@@ -50,12 +52,24 @@ struct RootView: View {
             if let id = detailRecordingID,
                let recording = findRecording(id: id) {
                 DetailView(recording: recording)
+                    .toolbar {
+                        ToolbarItem(placement: .navigation) {
+                            Button {
+                                detailRecordingID = nil
+                                selection = .library
+                            } label: {
+                                Label("返回录音库", systemImage: "chevron.left")
+                            }
+                        }
+                    }
             } else {
                 switch selection {
                 case .record:
                     RecordView()
                 case .library:
-                    LibraryView()
+                    LibraryView(onSelect: { id in
+                        detailRecordingID = id
+                    })
                 case .none:
                     RecordView()
                 }
@@ -65,16 +79,22 @@ struct RootView: View {
         .sheet(isPresented: $showOnboarding) {
             OnboardingView()
         }
-        .navigationDestination(for: UUID.self) { id in
-            if let recording = findRecording(id: id) {
-                DetailView(recording: recording)
+        .onChange(of: selection) { _, _ in
+            // 用户点击侧边栏时退出详情页
+            if suppressDetailClear {
+                suppressDetailClear = false
+            } else {
+                detailRecordingID = nil
             }
         }
         .task {
             // 崩溃恢复 + 接线录音完成回调
             appState.recoverInterruptedRecordings(context: modelContext)
             appState.recorder.onFinished = { recording in
-                selection = nil
+                if selection != .library {
+                    suppressDetailClear = true
+                    selection = .library
+                }
                 detailRecordingID = recording.id
             }
 
