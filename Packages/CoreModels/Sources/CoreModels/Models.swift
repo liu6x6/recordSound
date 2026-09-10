@@ -33,6 +33,8 @@ public final class Recording {
     public var duration: TimeInterval
     public var hasMicTrack: Bool
     public var hasSystemTrack: Bool
+    /// 按 App 录制时的来源 bundleID 列表（全局模式为空）
+    public var sourceApps: [String] = []
     public var statusRaw: String
     public var liveEngineRaw: String
     public var finalEngineRaw: String?

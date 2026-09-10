@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import SwiftData
 import AudioKit
 import CoreModels
@@ -31,8 +32,11 @@ struct RecordView: View {
                         icon: "speaker.wave.3.fill",
                         isOn: Binding(get: { vm.captureSystem }, set: { vm.captureSystem = $0 }),
                         level: vm.systemLevel,
-                        enabled: perms.screenGranted && vm.phase == .idle
+                        enabled: (perms.screenGranted || vm.systemSourceMode == .apps) && vm.phase == .idle
                     )
+                    if vm.captureSystem {
+                        systemModeSection(vm: vm, perms: perms)
+                    }
                     Divider()
                     Toggle(isOn: Binding(
                         get: { vm.liveTranscriptionEnabled },
@@ -244,6 +248,120 @@ struct RecordView: View {
             LevelBar(level: level)
                 .frame(width: 140)
         }
+    }
+
+    @ViewBuilder
+    private func systemModeSection(vm: RecordViewModel, perms: PermissionCenter) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Picker("捕获范围", selection: Binding(
+                get: { vm.systemSourceMode },
+                set: { vm.systemSourceMode = $0 }
+            )) {
+                Text("全部系统声音").tag(RecordViewModel.SystemSourceMode.global)
+                Text("指定 App（实验）").tag(RecordViewModel.SystemSourceMode.apps)
+            }
+            .pickerStyle(.radioGroup)
+            .labelsHidden()
+            .disabled(vm.phase != .idle)
+
+            if vm.systemSourceMode == .apps {
+                appPickerList(vm: vm)
+            }
+
+            if let err = vm.processTapError {
+                Text("⚠️ \(err)")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .textSelection(.enabled)
+            }
+        }
+        .padding(.leading, 28)
+    }
+
+    @ViewBuilder
+    private func appPickerList(vm: RecordViewModel) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("选择要录制的 App（按当前音频活动排序）")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button {
+                    vm.refreshAvailableApps()
+                } label: {
+                    Label("刷新", systemImage: "arrow.clockwise")
+                }
+                .controlSize(.small)
+                .disabled(vm.phase != .idle)
+            }
+            if vm.availableApps.isEmpty {
+                Text("未扫描到有音频活动的 App，点击刷新重试")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(vm.availableApps) { app in
+                            appRow(app: app, vm: vm)
+                        }
+                    }
+                }
+                .frame(maxHeight: 140)
+            }
+        }
+        .padding(8)
+        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 8))
+        .task { vm.refreshAvailableApps() }
+    }
+
+    @ViewBuilder
+    private func appRow(app: AudioProcessInfo, vm: RecordViewModel) -> some View {
+        let info = appInfo(for: app.bundleID)
+        Toggle(isOn: Binding(
+            get: { vm.selectedApps.contains(app.objectID) },
+            set: { isOn in
+                if isOn { vm.selectedApps.insert(app.objectID) }
+                else { vm.selectedApps.remove(app.objectID) }
+            }
+        )) {
+            HStack(spacing: 8) {
+                if let icon = info?.icon {
+                    Image(nsImage: icon)
+                        .resizable()
+                        .frame(width: 18, height: 18)
+                }
+                Text(info?.name ?? app.bundleID)
+                    .font(.callout)
+                if app.isRunningOutput {
+                    Image(systemName: "speaker.wave.2.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.green)
+                        .help("正在播放声音")
+                }
+                Text(app.bundleID)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+        }
+        .toggleStyle(.checkbox)
+        .disabled(vm.phase != .idle)
+    }
+
+    private struct ResolvedApp {
+        let name: String
+        let icon: NSImage?
+    }
+
+    private func appInfo(for bundleID: String) -> ResolvedApp? {
+        let running = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first
+        let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID)
+        guard running != nil || url != nil else { return nil }
+        return ResolvedApp(
+            name: running?.localizedName ?? bundleID,
+            icon: url.map { NSWorkspace.shared.icon(forFile: $0.path) }
+        )
     }
 
     private func timeString(_ t: TimeInterval) -> String {

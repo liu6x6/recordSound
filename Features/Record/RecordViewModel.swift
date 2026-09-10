@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import SwiftData
+import CoreAudio
 import AudioKit
 import TranscriptionKit
 import CoreModels
@@ -26,6 +27,18 @@ final class RecordViewModel {
     var captureSystem = true
     var liveTranscriptionEnabled = true
 
+    /// 系统声音捕获模式：全局 / 指定 App
+    enum SystemSourceMode: Equatable {
+        case global
+        case apps
+    }
+    var systemSourceMode: SystemSourceMode = .global
+    /// 已选 App（objectID → 信息）
+    var selectedApps: Set<AudioObjectID> = []
+    /// 可选 App 列表（ProcessTapEnumerator 扫描结果）
+    private(set) var availableApps: [AudioProcessInfo] = []
+    var processTapError: String?
+
     // 运行状态
     private(set) var phase: Phase = .idle
     private(set) var micLevel: Float = 0
@@ -48,13 +61,26 @@ final class RecordViewModel {
     private var micASR: SpeechLiveProvider?
     private var systemASR: SpeechLiveProvider?
 
+    func refreshAvailableApps() {
+        availableApps = ProcessTapEnumerator.audioProcesses()
+        // 清掉已退出进程的选择
+        let live = Set(availableApps.map(\.objectID))
+        selectedApps = selectedApps.intersection(live)
+    }
+
     func start(context: ModelContext) async {
         guard phase == .idle else { return }
 
         let perms = PermissionCenter.shared
         await perms.refresh()
         let doMic = captureMic && perms.micGranted
-        let doSystem = captureSystem && perms.screenGranted
+        // 全局模式需要屏幕录制权限；按 App 模式直接尝试（探索项，失败会报错并可回退）
+        let doSystem: Bool
+        if captureSystem {
+            doSystem = systemSourceMode == .apps ? true : perms.screenGranted
+        } else {
+            doSystem = false
+        }
         guard doMic || doSystem else {
             statusMessage = "没有可用音源：请先在上方授权麦克风或屏幕录制权限"
             return
@@ -68,9 +94,27 @@ final class RecordViewModel {
             Task { @MainActor in self.systemLevel = level }
         }
 
+        // 系统声音模式
+        var systemMode = RecordingSession.SystemAudioMode.global
+        if doSystem && systemSourceMode == .apps {
+            let selected = availableApps.filter { selectedApps.contains($0.objectID) }
+            guard !selected.isEmpty else {
+                statusMessage = "请在下方选择至少一个要录制的 App"
+                return
+            }
+            systemMode = .apps(processObjectIDs: selected.map(\.objectID),
+                               bundleIDs: selected.map(\.bundleID))
+        }
+
         do {
-            try await session.start(.init(captureMic: doMic, captureSystem: doSystem))
+            try await session.start(.init(captureMic: doMic, captureSystem: doSystem,
+                                          systemMode: systemMode))
+            processTapError = nil
         } catch {
+            // 按 App 模式失败 → 给出提示，建议回退全局
+            if case .apps = systemMode {
+                processTapError = error.localizedDescription
+            }
             statusMessage = "启动失败: \(error.localizedDescription)"
             return
         }
@@ -189,6 +233,7 @@ final class RecordViewModel {
         recording.duration = result.duration
         recording.hasMicTrack = result.micFileURL != nil
         recording.hasSystemTrack = result.systemFileURL != nil
+        recording.sourceApps = result.sourceApps
         recording.status = (result.micFileURL != nil || result.systemFileURL != nil) ? .done : .failed
 
         appendPendingSegments(to: recording)
