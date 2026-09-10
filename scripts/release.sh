@@ -21,6 +21,7 @@ rm -rf "$DIST_DIR/build"
 xcodebuild -project "$APP_NAME.xcodeproj" -scheme "$APP_NAME" \
   -configuration Release \
   -derivedDataPath "$DIST_DIR/build" \
+  -clonedSourcePackagesDirPath "build/SourcePackages" \
   build
 
 BUILT_APP="$DIST_DIR/build/Build/Products/Release/$APP_NAME.app"
